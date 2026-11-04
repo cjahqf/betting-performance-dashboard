@@ -82,8 +82,10 @@ function betSide(b){
   return odds===null||odds===0?'—':odds<0?'Favorite':'Underdog';
  }
  if(/spread|handicap/.test(type)){
-  let m=d.match(/(?:^|\s)([+-]\d+(?:\.\d+)?)\s*(?:spread|handicap|alternate|alt|\(|\||$)/i);
-  if(!m)m=d.match(/(?:spread|handicap|puck line|run line)\s*([+-]\d+(?:\.\d+)?)/i);
+  // The selected team's handicap determines favorite/underdog, not its bet price.
+  // Unsigned handicaps such as "CSU Fullerton 14.5 Spread" are positive.
+  let m=d.match(/(?:^|\s)([+-]?\d+(?:\.\d+)?)\s*(?:set\s+|game\s+)?(?:spread|handicap|puck line|run line)\b/i);
+  if(!m)m=d.match(/\b(?:spread|handicap|puck line|run line)\s*([+-]?\d+(?:\.\d+)?)/i);
   if(!m)m=d.match(/\b(?:favorite|underdog)\b/i);
   if(m&&m[1])return Number(m[1])<0?'Favorite':Number(m[1])>0?'Underdog':'—';
   if(m)return /favorite/i.test(m[0])?'Favorite':'Underdog';
