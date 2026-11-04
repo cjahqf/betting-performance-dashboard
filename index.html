@@ -56,7 +56,17 @@ function classifyMarket(b){
  if(base==='Moneyline')return ['Moneyline','Moneyline'];
  return [base||'Other','Other / needs classification'];
 }
-for(const b of bets){const [major,detail]=classifyMarket(b);b.market_group=major;b.market_detail=detail}
+function marketSubtype(b,major,detail){
+ const isSpread=major==='Spread / handicap',isTotal=major==='Game total'||major==='Team total';
+ if(!isSpread&&!isTotal)return detail;
+ const d=String(b.description||'');
+ const explicit=/\b(?:alternate|alternative|alt\.?)(?:\s+(?:spread|line|total|points|goals|runs|puck|run))?\b|\b(?:spread|total|puck line|run line)\s*[-–]?\s*(?:alternate|alternative|alt)\b/i.test(d);
+ const a=num(b.american_odds);
+ const inferred=a!==null&&a!==0&&(a>130||a< -130);
+ if(explicit||inferred)return (isSpread?'Alternative spread':'Alternative total')+(explicit?'':' (odds-based)');
+ return detail;
+}
+for(const b of bets){const [major,detail]=classifyMarket(b);b.market_group=major;b.market_detail=marketSubtype(b,major,detail)}
 
 let current=[],group='sport_group';function opts(id,key){let vals=[...new Set(bets.map(b=>String(b[key]??'')).filter(Boolean))].sort();$(id).innerHTML='<option value="">All</option>'+vals.map(v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>').join('')}
 for(let [id,key] of [['source','source'],['book','sportsbook'],['sport','sport_group'],['market','market_group'],['detail','market_detail'],['timing','timing_group'],['status','status']])opts(id,key);const statusLabel=v=>{let x=String(v??'').toUpperCase();if(x.includes('LOSS')||x==='LOST')return 'Loss';if(x.includes('WIN')||x==='WON')return 'Win';if(x.includes('VOID')||x.includes('CANCEL'))return 'Void';if(x.includes('PUSH'))return 'Push';return '—'};$('status').innerHTML='<option value="">All</option>'+['Win','Loss','Push','Void'].map(x=>'<option value="'+x+'">'+x+'</option>').join('');
