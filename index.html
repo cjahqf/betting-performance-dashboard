@@ -7,6 +7,13 @@ const $=id=>document.getElementById(id),esc=x=>String(x??'').replace(/[&<>"']/g,
 function classifyMarket(b){
  const d=String(b.description||'').toLowerCase(), base=String(b.market_group||''), sport=String(b.sport_group||'').toLowerCase();
  if(base==='Parlay'||String(b.bet_type).toLowerCase().includes('parlay'))return ['Parlay','Multi-leg parlay'];
+ if(sport==='tennis'){
+  if(/set spread|game handicap|set handicap|spread|handicap/.test(d))return ['Spread / handicap','Tennis — set/game handicap'];
+  if(/total games|total sets|set \d+ total|set (?:one|two|three) total|over\/under|\b(?:over|under)\s+\d+(?:\.\d+)?\b/.test(d))return ['Game total',/set \d+|set (?:one|two|three)|1st set|2nd set|3rd set/.test(d)?'Tennis — set total':'Tennis — match total'];
+  if(/moneyline|match winner|to win match|winner/.test(d)||base==='Moneyline')return ['Moneyline','Tennis — match winner'];
+  if(/aces|double faults|break points|service games/.test(d))return ['Tennis player stat','Tennis — player statistic'];
+  return [base==='Player prop'?'Tennis match market':base, 'Tennis — other match market'];
+ }
  if(/future|to win (?:the )?(?:championship|conference|division)|regular season wins|to advance to|mvp\b/.test(d))return ['Futures','Futures / awards'];
  const teamTotal=/team total|team points|team goals|team runs|team over\/under|(?:home|away) team (?:over\/under|total)|(?:home|away) (?:team )?total|total (?:points|goals|runs) (?:for|by) (?:home|away)/.test(d);
  if(teamTotal)return ['Team total',/goals/.test(d)?'Team total — goals':/runs/.test(d)?'Team total — runs':'Team total — points'];
