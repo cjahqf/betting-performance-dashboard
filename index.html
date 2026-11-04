@@ -78,17 +78,20 @@ function betSide(b){
   return '—';
  }
  if(/moneyline/.test(type)){
-  let odds=num(b.american_odds);
-  return odds===null||odds===0?'—':odds<0?'Favorite':'Underdog';
+  // Three-way hockey/soccer draw selections must not be classified by price.
+  if(/^(?:tie|draw)\b|\b(?:tie|draw)\s+(?:60\s*min|money\s*line|moneyline|full\s*time)\b/i.test(d))return 'Draw';
+  let a=num(b.american_odds),decimal=num(b.decimal_odds);
+  if((a===null||a===0)&&decimal!==null&&decimal>1)a=decimal>=2?(decimal-1)*100:-100/(decimal-1);
+  return a===null||a===0?'—':a<0?'Favorite':'Underdog';
  }
  if(/spread|handicap/.test(type)){
-  // The selected team's handicap determines favorite/underdog, not its bet price.
-  // Unsigned handicaps such as "CSU Fullerton 14.5 Spread" are positive.
-  let m=d.match(/(?:^|\s)([+-]?\d+(?:\.\d+)?)\s*(?:set\s+|game\s+)?(?:spread|handicap|puck line|run line)\b/i);
+  // The selection's signed handicap, not the price, determines the side.
+  // Support "Alternate Puck Line", "Alt Spread", "Set Spread", etc.
+  let m=d.match(/(?:^|\s)([+-]?\d+(?:\.\d+)?)\s*(?:(?:alternate|alternative|alt)\s+)?(?:(?:set|game|point|puck|run)\s+)?(?:spread|handicap|line)\b/i);
   if(!m)m=d.match(/\b(?:spread|handicap|puck line|run line)\s*([+-]?\d+(?:\.\d+)?)/i);
-  if(!m)m=d.match(/\b(?:favorite|underdog)\b/i);
   if(m&&m[1])return Number(m[1])<0?'Favorite':Number(m[1])>0?'Underdog':'—';
-  if(m)return /favorite/i.test(m[0])?'Favorite':'Underdog';
+  if(/\bfavorite\b/i.test(d))return 'Favorite';
+  if(/\bunderdog\b/i.test(d))return 'Underdog';
   return '—';
  }
  return '—';
