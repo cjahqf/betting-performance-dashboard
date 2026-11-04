@@ -75,6 +75,8 @@ function betSide(b){
  if(/total|player prop|tennis player stat/.test(type)){
   if(/\bunder\b/i.test(d))return 'Under';
   if(/\bover\b/i.test(d))return 'Over';
+  // Alternate thresholds such as "1+ Assists", "20+ Points", or "50+ Yards" are over selections.
+  if(/\b\d+(?:\.\d+)?\s*\+\s*(?:assists?|rebounds?|points?|pts|receptions?|catches|shots?(?: on goal)?|goals?|saves?|hits?|strikeouts?|steals?|blocks?|passing|rushing|receiving|yards?|yds?|three[ -]?pointers?|3pt|3pm|threes?|touchdowns?|tds?)\b/i.test(d))return 'Over';
   return '—';
  }
  if(/moneyline/.test(type)){
