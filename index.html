@@ -69,88 +69,79 @@ function marketSubtype(b,major,detail){
 // Classification rules learned from the user's first reviewed ledger wave.
 // Explicit market wording takes priority over the import's original market group and odds.
 function reviewedMarket(b){
- const d=String(b.description||''),l=d.toLowerCase(),sport=String(b.sport_group||'').toLowerCase();
- const period=/\b(?:1st|first|2nd|second|3rd|third|4th|fourth)\s*(quarter|half|period)\b/i.exec(d);
- const tag=period?(period[1].toLowerCase()==='quarter'?(parseInt(period[0])||({'first':1,'second':2,'third':3,'fourth':4}[period[0].toLowerCase().split(' ')[0]])||1)+'Q':period[1].toLowerCase()==='half'?(parseInt(period[0])||(/second|2nd/i.test(period[0])?2:1))+'H':(parseInt(period[0])||1)+'P'):null;
- const hasSpread=/\b(?:spread|handicap|puck line|run line)\b/i.test(d);
- const hasAlternate=/\b(?:alt|alternate|alternative)\b/i.test(d);
- const playerMetric=/\s-\s(?:alt\s+)?(?:total\s+)?(?:pts\s*\+\s*reb\s*\+\s*ast|reb\s*\+\s*ast|points|rebounds|assists|made threes|total rebounds|shots on goal|passing\s+(?:yds|yards|tds)|rushing\s+(?:yds|yards)|receiving\s+(?:yds|yards)|total receptions|receptions|passing tds)\b/i.test(d);
- const threshold=/\b\d+(?:\.\d+)?\+\s*(?:points|rebounds|assists|receptions|shots on goal|yards|goals)\b/i.test(d);
- const playerMarket=playerMetric||threshold||/\\b(?:any time touchdown scorer|anytime goal scorer|to score \\d+\\+ touchdowns|player double double|player triple double)\\b/i.test(d)||/\\b(?:shots on goal|sog)\\b/i.test(d)&&!hasSpread||/\\b\\d+\\+\\s*(?:threes|hits|strikeouts)\\b/i.test(d);
- // Second reviewed wave: explicit player-stat labels override stale imported game-total labels.
- const explicitStat=/\\s-\\s(?:alt\\s+)?(?:total\\s+)?(?:pts\\s*\\+\\s*reb\\s*\\+\\s*ast|pts\\s*\\+\\s*ast|pts\\s*\\+\\s*reb|reb\\s*\\+\\s*ast|points|rebounds|assists|made threes|total rebounds|shots on goal|passing\\s+(?:yds|yards|tds)|rushing\\s+(?:yds|yards)|receiving\\s+(?:yds|yards)|total receptions|receptions)\\b/i.test(d);
- const statName=/\\b(?:made threes|threes|strikeouts|hits|passing tds|passing yards|receiving yds|rushing yds|total receptions|pts \\+ reb \\+ ast)\\b/i.test(d);
- if(!hasSpread&&(explicitStat||playerMarket||/\\b(?:player double double|player triple double)\\b/i.test(d))){
-  const metrics=[
-   ['PRA',/pts\\s*\\+\\s*reb\\s*\\+\\s*ast|points\\s*\\+\\s*rebounds\\s*\\+\\s*assists/i],
-   ['PA',/pts\\s*\\+\\s*ast/i],['PR',/pts\\s*\\+\\s*reb/i],['RA',/reb\\s*\\+\\s*ast/i],
-   ['3s',/made threes|\\d+\\+\\s*threes|three.pointers|3pt|3pm/i],
-   ['SOG',/shots? on goal|\\bsog\\b/i],
-   ['Passing TDs',/passing\\s*(?:tds|touchdowns)/i],
-   ['Rushing Yards',/rushing\\s*(?:yds|yards)/i],['Receiving Yards',/receiving\\s*(?:yds|yards)/i],
-   ['Passing Yards',/passing\\s*(?:yds|yards)/i],
-   ['Receptions',/receptions|catches/i],['Assists',/assists/i],['Rebounds',/rebounds/i],
-   ['Points',/\\bpoints\\b|\\bpts\\b/i],
-   ['Strikeouts',/strikeouts/i],['Hits',/\\bhits\\b/i],
-   ['Touchdown scorer',/touchdown scorer|to score \\d+\\+ touchdowns/i],
-   ['Goal scorer',/anytime goal scorer|any time goal scorer/i],
-   ['Double-double / triple-double',/double.double|triple.double/i]
-  ];
-  const match=metrics.find(x=>x[1].test(d));
-  if(match)return ['Player prop','Player prop — '+match[0]];
- }
- // Time-segment winner markets are moneylines, even when the word moneyline is absent.
- if(/\\b(?:1st|first|2nd|second|3rd|third|4th|fourth)\\s*(?:quarter|half|period)\\s+winner\\b|\\bhalf.time result\\b|\\b1st inning result\\b/i.test(d))
-  return ['Moneyline',/inning/i.test(d)?'1st Inning':/half.time/i.test(d)?'1H Moneyline':tag?tag+' Moneyline':'Moneyline'];
- // Soccer BTTS is its own market, not a game total.
+ const d=String(b.description||''),l=d.toLowerCase(),base=String(b.market_group||''),sport=String(b.sport_group||'').toLowerCase();
+ const segment=d.match(/\b(1st|first|2nd|second|3rd|third|4th|fourth)\s*(quarter|half|period|inning)\b/i);
+ const ord=segment?({first:1,second:2,third:3,fourth:4}[segment[1].toLowerCase()]||parseInt(segment[1],10)):null;
+ const tag=segment?(segment[2].toLowerCase()==='quarter'?ord+'Q':segment[2].toLowerCase()==='half'?ord+'H':segment[2].toLowerCase()==='inning'?ord+'st Inning':ord+'P'):null;
+ const alt=/\b(?:alternate|alternative|alt)\b/i.test(d);
+ const spread=/\b(?:spread|handicap|puck line|run line|win(?:s)? by over \d|wins? by more than)\b|^KXNFLSPREAD-/i.test(d);
+ const isCaesars=/%%/.test(d);
+ const metrics=[
+ ['PRA',/pts\s*\+\s*reb\s*\+\s*ast|points\s*\+\s*(?:assists\s*\+\s*rebounds|rebounds\s*\+\s*assists)|points\s*\+\s*rebounds\s*\+\s*assists/i],
+ ['Points + rebounds',/pts\s*\+\s*reb\b|points\s*\+\s*rebounds/i],
+ ['Points + assists',/pts\s*\+\s*ast\b|points\s*\+\s*assists/i],
+ ['Rebounds + assists',/reb\s*\+\s*ast\b|rebounds\s*\+\s*assists/i],
+ ['3-pointers made',/made threes|threes made|3pt field goals|3pt|3pm|\bthrees\b|three.pointers/i],
+ ['Shots on goal',/shots? on goal|\bsog\b/i],
+ ['Passing touchdowns',/passing\s*(?:tds?|touchdowns?)/i],
+ ['Passing yards',/pass(?:ing)?\s*(?:yds?|yards)/i],
+ ['Rushing yards',/rush(?:ing)?\s*(?:yds?|yards)/i],
+ ['Receiving yards',/receiv(?:ing)?\s*(?:yds?|yards)/i],
+ ['Receptions',/receptions?|catches/i],
+ ['Strikeouts',/strikeouts?/i],['Outs recorded',/outs recorded/i],
+ ['Touchdown scorer',/touchdown scorer|first\s*(?:td|touchdown)|1st\s*touchdown|to score (?:\d+\s*\+|a|the first) touchdowns?|to score a touchdown/i],
+ ['Goal scorer',/any\s*time goal scorer/i],
+ ['Double-double / triple-double',/double.double|triple.double/i],
+ ['Assists',/assists?/i],['Rebounds',/rebounds?/i],
+ ['Points',/\bpoints?\b|\bpts\b/i],['Blocks',/\bblocks?\b/i],['Steals',/\bsteals?\b/i],
+ ['Hits',/\bhits?\b|to hit a single/i],['Goals',/\bgoals?\b/i],
+ ['Longest rush',/longest rush/i]
+ ];
+ if(base==='Parlay'||/\s\|\s/.test(d)&&/futures|regular season wins|conference winner/i.test(d))return ['Parlay','Multi-leg parlay'];
+ if(/^KXNFLSPREAD-|wins? by over \d|wins? by more than \d/i.test(d))return ['Spread','Winning margin'];
+ if(spread)return ['Spread',tag?tag+' Spread':alt?'Alternative spread':/set spread/i.test(d)?'Tennis — set handicap':'Spread'];
  if(/both teams to score/i.test(d))return ['Both teams to score','Both teams to score'];
- const playerMarket=playerMetric||threshold||/\b(?:any time touchdown scorer|to score \d+\+ touchdowns|player double double)\b/i.test(d)||/\b(?:shots on goal|sog)\b/i.test(d)&&!hasSpread;
- if(hasSpread){
-  let detail=tag?tag+' Spread':hasAlternate?'Alternative spread':/\bset spread\b/i.test(d)?'Alternative spread':'Spread';
-  return ['Spread',detail];
- }
- if(playerMarket){
-  const metrics=[
-   ['PRA',/pts\s*\+\s*reb\s*\+\s*ast|points\s*\+\s*rebounds\s*\+\s*assists|\bpra\b/i],
-   ['RA',/reb\s*\+\s*ast|rebounds\s*\+\s*assists/i],
-   ['3s',/made threes|three.pointers|3pt|3pm/i],
-   ['SOG',/shots? on goal|\bsog\b/i],
-   ['Rushing Yards',/rushing\s*(?:yds|yards)/i],
-   ['Receiving Yards',/receiving\s*(?:yds|yards)/i],
-   ['Passing Yards',/passing\s*(?:yds|yards)/i],
-   ['Receptions',/receptions|catches/i],
-   ['Assists',/assists/i],['Rebounds',/rebounds/i],['Points',/\bpoints\b|\bpts\b/i],
-   ['Passing TDs',/passing\s*(?:tds|touchdowns)/i],
-   ['Touchdown scorer',/touchdown scorer|to score \d+\+ touchdowns/i],
-   ['Double-double / triple-double',/double.double|triple.double/i]
-  ];
-  const match=metrics.find(x=>x[1].test(d));
-  return ['Player prop',match?'Player prop — '+match[0]:'Player prop — other'];
- }
- if(/\b(?:moneyline|money line|half winner|match winner)\b/i.test(d))return ['Moneyline',tag?tag+' Moneyline':sport==='tennis'?'Tennis — match winner':'Moneyline'];
- if(/\b(?:total|over\/under)\b/i.test(d)||/^(?:over|under)\s*\(?\d/i.test(d)){
-  const isTeam=/\b(?:home|away)\s+team\b|\b(?:[A-Za-z][\w'.-]*\s+){1,4}total points\b/i.test(d)&&!/\b(?:total points|total goals)\s+[^@]+\s+@/i.test(d);
-  return [isTeam?'Team total':'Game total',tag?tag+' Total':isTeam?'Team Total':hasAlternate?'Alternative total':'Game total'];
- }
+ if(/(?:team total|team total pts|team total points|team total goals|team total runs|team points|team goals|team runs|team total over|team total under|team total\b|alt total pts|team total\s+(?:over|under)|\bteam\s+total\s+(?:over|under))/.test(l)||/\b(?:[a-z][a-z .'-]{2,30})\s+(?:1st.half\s+)?team total (?:over|under)\b/i.test(d))
+  return ['Team total',tag?tag+' Team total':alt?'Alternative team total':'Team total'];
+ if(/^\s*(?:tie|draw)\b/i.test(d)&&/moneyline|money line|result/i.test(d))return ['Moneyline','Three-way moneyline'];
+ if(/(?:1st inning result|quarter winner|half winner|period winner|half - betting 3 way|1st quarter winner)/i.test(d))return ['Moneyline',tag?tag+' Moneyline':'Period moneyline'];
+ if(/\b(?:moneyline|money line|match winner)\b/i.test(d)&&!/\b(?:player|points|rebounds)\b/i.test(d))return ['Moneyline',sport==='tennis'?'Tennis — match winner':tag?tag+' Moneyline':'Moneyline'];
+ const metric=metrics.find(([name,re])=>re.test(d));
+ const explicitPlayer=/\bplayer\b|^\s*(?:alt|player total|pitcher total)\s+(?:points|rebounds|assists|threes|rushing|receiving|passing|receptions|shots|strikeouts)|\s-\s(?:pts|reb|ast|points|rebounds|assists|made threes|passing|rushing|receiving)|\b\d+(?:\.\d+)?\s*\+\s*(?:points|rebounds|assists|threes|receptions|receiving|rushing|passing|yards|blocks|goals|strikeouts|touchdowns)|any\s*time goal scorer|touchdown scorer|outs recorded|to hit a single|first\s*(?:td|touchdown)|triple.double|double.double|^KXNFLFIRSTTD-|^KXNFLTDPROT-/i.test(d);
+ const likelyNamedPlayer=/^[A-Z][a-z.'’-]+(?:\s+[A-Z][a-z.'’-]+){1,3}\s+(?:over|under)\s+\d+(?:\.\d+)?\b/.test(d)&&!/\b(?:team total|total points|total goals)\b/i.test(d);
+ if(metric&&(explicitPlayer||likelyNamedPlayer||base==='Player prop'&&!/^(?:over|under)\s+\d/.test(d)))return ['Player prop','Player prop — '+metric[0]];
+ if(/^(?:KXNFLFIRSTTD-|KXNFLTDPROT-)/i.test(d))return ['Player prop','Player prop — Touchdown scorer'];
+ if(/^\s*(?:alt|player total|pitcher total)\b/i.test(d)||explicitPlayer&&base==='Player prop')return ['Player prop','Player prop — other'];
+ if(/(?:total points|total goals|total games|total runs|over\/under|^\s*(?:over|under)\s+\d)/i.test(d)||base==='Game total')
+  return ['Game total',tag?tag+' Total':alt?'Alternative total':'Game total'];
+ if(base==='Moneyline')return ['Moneyline','Moneyline'];
  return null;
 }
 function reviewedSide(b){
- const d=String(b.description||'');
- if(b.market_group==='Both teams to score')return /^no\b/i.test(d)?'No':/^yes\b/i.test(d)?'Yes':'—';
- if(b.market_group==='Spread'){
-  let m=d.match(/(?:^|\s|\()([+-]?\d+(?:\.\d+)?)\)?\s*(?:(?:alternate|alternative|alt)\s+)?(?:(?:set|game|point|puck|run)\s+)?(?:spread|handicap|line)\b/i);
-  if(!m)m=d.match(/\b(?:spread|handicap|puck line|run line)\s*([+-]?\d+(?:\.\d+)?)/i);
-  if(!m)m=d.match(/\b(?:home|away) team\s*([+-]\d+(?:\.\d+)?)/i);
-  if(m)return Number(m[1])<0?'Favorite':Number(m[1])>0?'Underdog':'—';
+ const d=String(b.description||''),type=b.market_group;
+ if(type==='Both teams to score')return /\bno\b/i.test(d)?'No':/\byes\b/i.test(d)?'Yes':'—';
+ if(type==='Player prop'||type==='Game total'||type==='Team total'){
+  if(/%%/.test(d)){const m=d.match(/%%\s*\|?(Over|Under)\|?\s*%%/i);if(m)return m[1].toLowerCase()==='over'?'Over':'Under';}
+  const m=d.match(/\b(over|under)\b/i);
+  if(m)return m[1].toLowerCase()==='over'?'Over':'Under';
+  if(/\b\d+(?:\.\d+)?\s*\+\s*(?:points|rebounds|assists|receptions|yards|threes|hits|strikeouts|blocks|goals|touchdowns|receiving|rushing|passing)\b/i.test(d)||/%%\s*\|\d+\+\|/i.test(d)||/\b(?:first touchdown|1st touchdown|anytime touchdown|anytime goal scorer|to hit a single)\b/i.test(d))return 'Over';
  }
- if(b.market_group==='Player prop'||b.market_group==='Game total'||b.market_group==='Team total'){
-  const first=d.match(/\b(over|under)\b/i);
-  if(first)return first[1][0].toUpperCase()+first[1].slice(1).toLowerCase();
-  if(/\b\d+(?:\.\d+)?\+\s*(?:points|rebounds|assists|receptions|shots on goal|yards|goals|threes|hits|strikeouts)\b/i.test(d))return 'Over';
+ if(type==='Spread'){
+  let m=d.match(/%%\s*\|?[^|%]+\|?\s*%%\s*([+-]?\d+(?:\.\d+)?)/);
+  if(!m)m=d.match(/(?:^|\s)([+-]?\d+(?:\.\d+)?)\s*(?:(?:alternate|alternative|alt)\s+)?(?:(?:set|game|point|puck|run)\s+)?(?:spread|handicap|line)\b/i);
+  if(!m)m=d.match(/(?:spread|handicap|puck line|run line)\s*([+-]?\d+(?:\.\d+)?)/i);
+  if(m)return Number(m[1])<0?'Favorite':Number(m[1])>0?'Underdog':'—';
+  if(/wins? by over|wins? by more than/i.test(d))return 'Favorite';
  }
  return null;
 }
-for(const b of bets){const [major,detail]=classifyMarket(b);const override=reviewedMarket(b);b.market_group=override?override[0]:major;b.market_detail=override?override[1]:marketSubtype(b,major,detail);if(/^(?:NBA|NCAAM|NCAAW)$/.test(String(b.league||'').toUpperCase()))b.sport_group=/^NBA$/i.test(b.league)?'NBA':'CBB';b.reviewed_side=reviewedSide(b)}
+for(const b of bets){
+ const original=b.market_group,base=classifyMarket(b),override=reviewedMarket(b);
+ b.market_group=override?override[0]:base[0];
+ b.market_detail=override?override[1]:marketSubtype(b,base[0],base[1]);
+ b.reviewed_side=reviewedSide(b);
+ if(/^(?:NBA|NCAAM|NCAAW)$/i.test(String(b.league||'')))b.sport_group=/^NBA$/i.test(b.league)?'NBA':'CBB';
+}
 
 let current=[],group='sport_group';function opts(id,key){let vals=[...new Set(bets.map(b=>String(b[key]??'')).filter(Boolean))].sort();$(id).innerHTML='<option value="">All</option>'+vals.map(v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>').join('')}
 for(let [id,key] of [['source','source'],['book','sportsbook'],['sport','sport_group'],['market','market_group'],['detail','market_detail'],['timing','timing_group'],['status','status']])opts(id,key);const statusLabel=v=>{let x=String(v??'').toUpperCase();if(x.includes('LOSS')||x==='LOST')return 'Loss';if(x.includes('WIN')||x==='WON')return 'Win';if(x.includes('VOID')||x.includes('CANCEL'))return 'Void';if(x.includes('PUSH'))return 'Push';return '—'};$('status').innerHTML='<option value="">All</option>'+['Win','Loss','Push','Void'].map(x=>'<option value="'+x+'">'+x+'</option>').join('');
