@@ -76,6 +76,34 @@ function reviewedMarket(b){
  const hasAlternate=/\b(?:alt|alternate|alternative)\b/i.test(d);
  const playerMetric=/\s-\s(?:alt\s+)?(?:total\s+)?(?:pts\s*\+\s*reb\s*\+\s*ast|reb\s*\+\s*ast|points|rebounds|assists|made threes|total rebounds|shots on goal|passing\s+(?:yds|yards|tds)|rushing\s+(?:yds|yards)|receiving\s+(?:yds|yards)|total receptions|receptions|passing tds)\b/i.test(d);
  const threshold=/\b\d+(?:\.\d+)?\+\s*(?:points|rebounds|assists|receptions|shots on goal|yards|goals)\b/i.test(d);
+ const playerMarket=playerMetric||threshold||/\\b(?:any time touchdown scorer|anytime goal scorer|to score \\d+\\+ touchdowns|player double double|player triple double)\\b/i.test(d)||/\\b(?:shots on goal|sog)\\b/i.test(d)&&!hasSpread||/\\b\\d+\\+\\s*(?:threes|hits|strikeouts)\\b/i.test(d);
+ // Second reviewed wave: explicit player-stat labels override stale imported game-total labels.
+ const explicitStat=/\\s-\\s(?:alt\\s+)?(?:total\\s+)?(?:pts\\s*\\+\\s*reb\\s*\\+\\s*ast|pts\\s*\\+\\s*ast|pts\\s*\\+\\s*reb|reb\\s*\\+\\s*ast|points|rebounds|assists|made threes|total rebounds|shots on goal|passing\\s+(?:yds|yards|tds)|rushing\\s+(?:yds|yards)|receiving\\s+(?:yds|yards)|total receptions|receptions)\\b/i.test(d);
+ const statName=/\\b(?:made threes|threes|strikeouts|hits|passing tds|passing yards|receiving yds|rushing yds|total receptions|pts \\+ reb \\+ ast)\\b/i.test(d);
+ if(!hasSpread&&(explicitStat||playerMarket||/\\b(?:player double double|player triple double)\\b/i.test(d))){
+  const metrics=[
+   ['PRA',/pts\\s*\\+\\s*reb\\s*\\+\\s*ast|points\\s*\\+\\s*rebounds\\s*\\+\\s*assists/i],
+   ['PA',/pts\\s*\\+\\s*ast/i],['PR',/pts\\s*\\+\\s*reb/i],['RA',/reb\\s*\\+\\s*ast/i],
+   ['3s',/made threes|\\d+\\+\\s*threes|three.pointers|3pt|3pm/i],
+   ['SOG',/shots? on goal|\\bsog\\b/i],
+   ['Passing TDs',/passing\\s*(?:tds|touchdowns)/i],
+   ['Rushing Yards',/rushing\\s*(?:yds|yards)/i],['Receiving Yards',/receiving\\s*(?:yds|yards)/i],
+   ['Passing Yards',/passing\\s*(?:yds|yards)/i],
+   ['Receptions',/receptions|catches/i],['Assists',/assists/i],['Rebounds',/rebounds/i],
+   ['Points',/\\bpoints\\b|\\bpts\\b/i],
+   ['Strikeouts',/strikeouts/i],['Hits',/\\bhits\\b/i],
+   ['Touchdown scorer',/touchdown scorer|to score \\d+\\+ touchdowns/i],
+   ['Goal scorer',/anytime goal scorer|any time goal scorer/i],
+   ['Double-double / triple-double',/double.double|triple.double/i]
+  ];
+  const match=metrics.find(x=>x[1].test(d));
+  if(match)return ['Player prop','Player prop — '+match[0]];
+ }
+ // Time-segment winner markets are moneylines, even when the word moneyline is absent.
+ if(/\\b(?:1st|first|2nd|second|3rd|third|4th|fourth)\\s*(?:quarter|half|period)\\s+winner\\b|\\bhalf.time result\\b|\\b1st inning result\\b/i.test(d))
+  return ['Moneyline',/inning/i.test(d)?'1st Inning':/half.time/i.test(d)?'1H Moneyline':tag?tag+' Moneyline':'Moneyline'];
+ // Soccer BTTS is its own market, not a game total.
+ if(/both teams to score/i.test(d))return ['Both teams to score','Both teams to score'];
  const playerMarket=playerMetric||threshold||/\b(?:any time touchdown scorer|to score \d+\+ touchdowns|player double double)\b/i.test(d)||/\b(?:shots on goal|sog)\b/i.test(d)&&!hasSpread;
  if(hasSpread){
   let detail=tag?tag+' Spread':hasAlternate?'Alternative spread':/\bset spread\b/i.test(d)?'Alternative spread':'Spread';
@@ -108,6 +136,7 @@ function reviewedMarket(b){
 }
 function reviewedSide(b){
  const d=String(b.description||'');
+ if(b.market_group==='Both teams to score')return /^no\b/i.test(d)?'No':/^yes\b/i.test(d)?'Yes':'—';
  if(b.market_group==='Spread'){
   let m=d.match(/(?:^|\s|\()([+-]?\d+(?:\.\d+)?)\)?\s*(?:(?:alternate|alternative|alt)\s+)?(?:(?:set|game|point|puck|run)\s+)?(?:spread|handicap|line)\b/i);
   if(!m)m=d.match(/\b(?:spread|handicap|puck line|run line)\s*([+-]?\d+(?:\.\d+)?)/i);
@@ -117,7 +146,7 @@ function reviewedSide(b){
  if(b.market_group==='Player prop'||b.market_group==='Game total'||b.market_group==='Team total'){
   const first=d.match(/\b(over|under)\b/i);
   if(first)return first[1][0].toUpperCase()+first[1].slice(1).toLowerCase();
-  if(/\b\d+(?:\.\d+)?\+\s*(?:points|rebounds|assists|receptions|shots on goal|yards|goals)\b/i.test(d))return 'Over';
+  if(/\b\d+(?:\.\d+)?\+\s*(?:points|rebounds|assists|receptions|shots on goal|yards|goals|threes|hits|strikeouts)\b/i.test(d))return 'Over';
  }
  return null;
 }
