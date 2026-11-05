@@ -66,11 +66,67 @@ function marketSubtype(b,major,detail){
  if(explicit||inferred)return (isSpread?'Alternative spread':'Alternative total')+(explicit?'':' (odds-based)');
  return detail;
 }
-for(const b of bets){const [major,detail]=classifyMarket(b);b.market_group=major;b.market_detail=marketSubtype(b,major,detail)}
+// Classification rules learned from the user's first reviewed ledger wave.
+// Explicit market wording takes priority over the import's original market group and odds.
+function reviewedMarket(b){
+ const d=String(b.description||''),l=d.toLowerCase(),sport=String(b.sport_group||'').toLowerCase();
+ const period=/\b(?:1st|first|2nd|second|3rd|third|4th|fourth)\s*(quarter|half|period)\b/i.exec(d);
+ const tag=period?(period[1].toLowerCase()==='quarter'?(parseInt(period[0])||({'first':1,'second':2,'third':3,'fourth':4}[period[0].toLowerCase().split(' ')[0]])||1)+'Q':period[1].toLowerCase()==='half'?(parseInt(period[0])||(/second|2nd/i.test(period[0])?2:1))+'H':(parseInt(period[0])||1)+'P'):null;
+ const hasSpread=/\b(?:spread|handicap|puck line|run line)\b/i.test(d);
+ const hasAlternate=/\b(?:alt|alternate|alternative)\b/i.test(d);
+ const playerMetric=/\s-\s(?:alt\s+)?(?:total\s+)?(?:pts\s*\+\s*reb\s*\+\s*ast|reb\s*\+\s*ast|points|rebounds|assists|made threes|total rebounds|shots on goal|passing\s+(?:yds|yards|tds)|rushing\s+(?:yds|yards)|receiving\s+(?:yds|yards)|total receptions|receptions|passing tds)\b/i.test(d);
+ const threshold=/\b\d+(?:\.\d+)?\+\s*(?:points|rebounds|assists|receptions|shots on goal|yards|goals)\b/i.test(d);
+ const playerMarket=playerMetric||threshold||/\b(?:any time touchdown scorer|to score \d+\+ touchdowns|player double double)\b/i.test(d)||/\b(?:shots on goal|sog)\b/i.test(d)&&!hasSpread;
+ if(hasSpread){
+  let detail=tag?tag+' Spread':hasAlternate?'Alternative spread':/\bset spread\b/i.test(d)?'Alternative spread':'Spread';
+  return ['Spread',detail];
+ }
+ if(playerMarket){
+  const metrics=[
+   ['PRA',/pts\s*\+\s*reb\s*\+\s*ast|points\s*\+\s*rebounds\s*\+\s*assists|\bpra\b/i],
+   ['RA',/reb\s*\+\s*ast|rebounds\s*\+\s*assists/i],
+   ['3s',/made threes|three.pointers|3pt|3pm/i],
+   ['SOG',/shots? on goal|\bsog\b/i],
+   ['Rushing Yards',/rushing\s*(?:yds|yards)/i],
+   ['Receiving Yards',/receiving\s*(?:yds|yards)/i],
+   ['Passing Yards',/passing\s*(?:yds|yards)/i],
+   ['Receptions',/receptions|catches/i],
+   ['Assists',/assists/i],['Rebounds',/rebounds/i],['Points',/\bpoints\b|\bpts\b/i],
+   ['Passing TDs',/passing\s*(?:tds|touchdowns)/i],
+   ['Touchdown scorer',/touchdown scorer|to score \d+\+ touchdowns/i],
+   ['Double-double / triple-double',/double.double|triple.double/i]
+  ];
+  const match=metrics.find(x=>x[1].test(d));
+  return ['Player prop',match?'Player prop — '+match[0]:'Player prop — other'];
+ }
+ if(/\b(?:moneyline|money line|half winner|match winner)\b/i.test(d))return ['Moneyline',tag?tag+' Moneyline':sport==='tennis'?'Tennis — match winner':'Moneyline'];
+ if(/\b(?:total|over\/under)\b/i.test(d)||/^(?:over|under)\s*\(?\d/i.test(d)){
+  const isTeam=/\b(?:home|away)\s+team\b|\b(?:[A-Za-z][\w'.-]*\s+){1,4}total points\b/i.test(d)&&!/\b(?:total points|total goals)\s+[^@]+\s+@/i.test(d);
+  return [isTeam?'Team total':'Game total',tag?tag+' Total':isTeam?'Team Total':hasAlternate?'Alternative total':'Game total'];
+ }
+ return null;
+}
+function reviewedSide(b){
+ const d=String(b.description||'');
+ if(b.market_group==='Spread'){
+  let m=d.match(/(?:^|\s|\()([+-]?\d+(?:\.\d+)?)\)?\s*(?:(?:alternate|alternative|alt)\s+)?(?:(?:set|game|point|puck|run)\s+)?(?:spread|handicap|line)\b/i);
+  if(!m)m=d.match(/\b(?:spread|handicap|puck line|run line)\s*([+-]?\d+(?:\.\d+)?)/i);
+  if(!m)m=d.match(/\b(?:home|away) team\s*([+-]\d+(?:\.\d+)?)/i);
+  if(m)return Number(m[1])<0?'Favorite':Number(m[1])>0?'Underdog':'—';
+ }
+ if(b.market_group==='Player prop'||b.market_group==='Game total'||b.market_group==='Team total'){
+  const first=d.match(/\b(over|under)\b/i);
+  if(first)return first[1][0].toUpperCase()+first[1].slice(1).toLowerCase();
+  if(/\b\d+(?:\.\d+)?\+\s*(?:points|rebounds|assists|receptions|shots on goal|yards|goals)\b/i.test(d))return 'Over';
+ }
+ return null;
+}
+for(const b of bets){const [major,detail]=classifyMarket(b);const override=reviewedMarket(b);b.market_group=override?override[0]:major;b.market_detail=override?override[1]:marketSubtype(b,major,detail);if(/^(?:NBA|NCAAM|NCAAW)$/.test(String(b.league||'').toUpperCase()))b.sport_group=/^NBA$/i.test(b.league)?'NBA':'CBB';b.reviewed_side=reviewedSide(b)}
 
 let current=[],group='sport_group';function opts(id,key){let vals=[...new Set(bets.map(b=>String(b[key]??'')).filter(Boolean))].sort();$(id).innerHTML='<option value="">All</option>'+vals.map(v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>').join('')}
 for(let [id,key] of [['source','source'],['book','sportsbook'],['sport','sport_group'],['market','market_group'],['detail','market_detail'],['timing','timing_group'],['status','status']])opts(id,key);const statusLabel=v=>{let x=String(v??'').toUpperCase();if(x.includes('LOSS')||x==='LOST')return 'Loss';if(x.includes('WIN')||x==='WON')return 'Win';if(x.includes('VOID')||x.includes('CANCEL'))return 'Void';if(x.includes('PUSH'))return 'Push';return '—'};$('status').innerHTML='<option value="">All</option>'+['Win','Loss','Push','Void'].map(x=>'<option value="'+x+'">'+x+'</option>').join('');
 function betSide(b){
+ if(b.reviewed_side)return b.reviewed_side;
  const type=String(b.market_group||'').toLowerCase(),d=String(b.description||'');
  if(/total|player prop|tennis player stat/.test(type)){
   if(/\bunder\b/i.test(d))return 'Under';
